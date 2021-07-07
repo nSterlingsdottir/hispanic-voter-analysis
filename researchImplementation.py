@@ -10,23 +10,24 @@ from argparse import ArgumentParser
 from math import fsum
 
 
+
 # set up argument parser
 parser = ArgumentParser()
-parser.add_argument('--path', required=True)
-parser.add_argument('--county', required=True)
-parser.add_argument('--data', required=True)
+parser.add_argument('--countyData', required=True)
+parser.add_argument('--countyName', required=True)
+parser.add_argument('--supplementalData', required=True)
 args = parser.parse_args()
 
 # initialize workbook with openpyxl
 wb = Workbook()
-wb = load_workbook(filename=args.path, data_only=True)
+wb = load_workbook(filename=args.countyData, data_only=True)
 
 # enter sheet of input county
-county_sheet = wb[args.county]
+county_sheet = wb[args.countyName]
 
 # initialize workbook with supplemental data
 dataWb = Workbook()
-dataWb = load_workbook(filename=args.data, data_only=True)
+dataWb = load_workbook(filename=args.supplementalData, data_only=True)
 # access to individual worksheets
 firstNamesWs = dataWb['FirstN']
 lastNamesWs = dataWb['LastN']
@@ -64,32 +65,46 @@ ethnicDict = {
 }
 
 # First Row Labels for each output worksheet column
-outputSheet.cell(row=1, column=1).value = 'Zip'
-outputSheet.cell(row=1, column=2).value = 'Party'
-outputSheet.cell(row=1, column=3).value = 'Gender'
-outputSheet.cell(row=1, column=4).value = 'Results'
-outputSheet.cell(row=1, column=24).value = 'Others'
+outputSheet.cell(row=1, column=1).value = 'County'
+outputSheet.cell(row=1, column=2).value = 'Voter ID'
+outputSheet.cell(row=1, column=3).value = 'Last Name'
+outputSheet.cell(row=1, column=4).value = 'First Name'
+outputSheet.cell(row=1, column=5).value = 'Middle Name'
+outputSheet.cell(row=1, column=6).value = 'Zip Code'
+outputSheet.cell(row=1, column=7).value = 'Gender'
+outputSheet.cell(row=1, column=8).value = 'Race'
+outputSheet.cell(row=1, column=9).value = 'Birth Date'
+outputSheet.cell(row=1, column=10).value = 'Party'
+outputSheet.cell(row=1, column=11).value = 'Voter Status'
+outputSheet.cell(row=1, column=12).value = 'Sub Ethnicity'
+outputSheet.cell(row=1, column=32).value = 'Others'
 for i in range(0,19):
-    outputSheet.cell(row=1, column=i+5).value = ethnicDict[i]
+    outputSheet.cell(row=1, column=i+13).value = ethnicDict[i]
 
 #create tuple data structure
 initialPercentages = ([], [], [], [])
 #format: (last, first, zip, secondLast)
 
 # iterate through rows of people
-for person in county_sheet.iter_rows(min_row=2, max_col=11): #min_row=2 skips label row
+for person in county_sheet.iter_rows(min_row=2): #min_row=2 skips label row
+    
+    first = ''
+    last = ''
+    secondLast = ''
     
     # parse last name and check if two last names
     # if for some reason someone has a multi part last name
     # with spaces that is considered a single last name
     # this will not work and consider it as two last names
-    lastParse = person[2].value.replace('-', ' ').split()
-    last = lastParse[0]
-    if len(lastParse) > 1:
-        secondLast = lastParse[1]
+    if person[2].value is not None:
+        lastParse = person[2].value.replace('-', ' ').split()
+        last = lastParse[0]
+        if len(lastParse) > 1:
+            secondLast = lastParse[1]
     # parse first name to take only first part
-    firstParse = person[3].value.replace('-', ' ').split()
-    first = firstParse[0]
+    if person[3].value is not None:
+        firstParse = person[3].value.replace('-', ' ').split()
+        first = firstParse[0]
     # get zip code first 5 digits
     zipCode = str(person[5].value)
     zipCode = zipCode[:5]
@@ -196,13 +211,22 @@ for person in county_sheet.iter_rows(min_row=2, max_col=11): #min_row=2 skips la
             subEthnicities.append(lastName * firstName * zips)
     
     # protect against divide by 0
-    if fsum(subEthnicities) != 0:
+    if fsum(subEthnicities) != 0 and person[5].value is not None:
         # Zip, Party, Gender, and Calculated Ethnicity of each person
-        outputSheet.cell(row=activeRow, column=1).value = str(person[5].value)[:5]
-        outputSheet.cell(row=activeRow, column=2).value = person[10].value
-        outputSheet.cell(row=activeRow, column=3).value = person[6].value
+        outputSheet.cell(row=activeRow, column=1).value = person[0].value
+        outputSheet.cell(row=activeRow, column=2).value = person[1].value
+        outputSheet.cell(row=activeRow, column=3).value = person[2].value
+        outputSheet.cell(row=activeRow, column=4).value = person[3].value
+        outputSheet.cell(row=activeRow, column=5).value = person[4].value
+        outputSheet.cell(row=activeRow, column=6).value = int(str(person[5].value)[:5])
+        outputSheet.cell(row=activeRow, column=7).value = person[6].value
+        outputSheet.cell(row=activeRow, column=8).value = person[7].value
+        outputSheet.cell(row=activeRow, column=9).value = person[8].value
+        outputSheet.cell(row=activeRow, column=9).number_format = 'mm/dd/yyyy'
+        outputSheet.cell(row=activeRow, column=10).value = person[9].value
+        outputSheet.cell(row=activeRow, column=11).value = person[10].value
         maxPos = subEthnicities.index(max(subEthnicities))
-        outputSheet.cell(row=activeRow, column=4).value = ethnicDict[maxPos]
+        outputSheet.cell(row=activeRow, column=12).value = ethnicDict[maxPos]
         
         percentageSum = 0.0
         
@@ -210,17 +234,20 @@ for person in county_sheet.iter_rows(min_row=2, max_col=11): #min_row=2 skips la
         for i in range(0, 19):
             # final step
             calculatedPercentage = subEthnicities[i] / (fsum(subEthnicities) / (1 - others))
-            outputSheet.cell(row=activeRow, column=i + 5).value = calculatedPercentage
-            outputSheet.cell(row=activeRow, column=i + 5).number_format = '0%'
+            outputSheet.cell(row=activeRow, column=i + 13).value = calculatedPercentage
+            outputSheet.cell(row=activeRow, column=i + 13).number_format = '0%'
             percentageSum += calculatedPercentage
         
         # others column
-        outputSheet.cell(row=activeRow, column=24).value = 1 - percentageSum
-        outputSheet.cell(row=activeRow, column=24).number_format = '0%'
+        outputSheet.cell(row=activeRow, column=32).value = 1 - percentageSum
+        outputSheet.cell(row=activeRow, column=32).number_format = '0%'
         
         # increment to next row
         activeRow += 1
 
 # save workbook
-outputFileName = args.county + '_output.xlsx'
+outputFileName = args.countyName + '_output.xlsx'
 outputWb.save(outputFileName)
+
+#wb.close()
+#dataWb.close()
